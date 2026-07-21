@@ -1,0 +1,36 @@
+{'author': 'Felipe Soares <felipe.staypuff@gmail.com>',
+ 'description': 'Original Checkmk plugin (through v1.0.2) created by '
+                'wellingtonsilva67@gmail.com. This plugin uses agent_modbus '
+                'v2.1 as its data source, developed by Vincent Tacquet '
+                '(https://github.com/vtacquet/agent_modbus). Set the Server '
+                'Address, port, slave and the registers you want to query from '
+                'the device. Consult the device documentation to find out '
+                'which registers you want and test them via command line '
+                'before configuring the services in the web interface. '
+                'Version 1.0.7 fixes multiple Modbus slaves on one host for '
+                'real: Checkmk only ever keeps one data source per special '
+                'agent name per host, so yielding one command per slave '
+                '(1.0.4-1.0.6) only ever ran the last slave - all Modbus '
+                'slaves configured in the rule are now queried by a single '
+                'agent_modbus invocation that loops over them internally and '
+                'tolerates individual slave failures. Version 1.0.4 changed '
+                'the "Check Modbus devices" rule so a single rule can '
+                'configure several Modbus slaves. Version 1.0.3 fixed the '
+                'value parser and added a "Modbus register value scaling" '
+                'rule to display/graph values with decimal places. This '
+                'Checkmk plugin (rulesets, server_side_calls and check logic) '
+                'was adapted and is maintained by Felipe Soares '
+                '(https://github.com/felipesoaresti/).',
+ 'download_url': 'https://github.com/felipesoaresti/',
+ 'files': {'cmk_addons_plugins': ['modbus/libexec/agent_modbus',
+                                  'modbus/libexec/agent_modbus_bin',
+                                  'modbus/rulesets/modbus.py',
+                                  'modbus/rulesets/modbus_value_params.py',
+                                  'modbus/server_side_calls/modbus.py',
+                                  'modbus/agent_based/modbus_value.py']},
+ 'name': 'modbus',
+ 'title': 'Check Modbus devices',
+ 'version': '1.0.7',
+ 'version.min_required': '2.3.0p26',
+ 'version.packaged': 'cmk-mkp-tool 0.2.0',
+ 'version.usable_until': '2.5.99'}

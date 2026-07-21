@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Orchestrator wrapper around the real agent_modbus binary (agent_modbus_bin).
+
+Why this exists (1.0.7): Checkmk only ever keeps ONE data source per
+special agent name per host - confirmed by reading the installed Checkmk
+2.4.0p18 source directly (cmk/base/sources/_builder.py `_add()` stores
+sources in `dict[source.source_info().ident] = source`, and
+`SpecialAgentSource.source_info()` in cmk/base/sources/_sources.py always
+returns `ident = f"special_{agent_name}"`, i.e. always "special_modbus"
+here, no matter how many commands the ruleset's commands_function yields).
+So making ../server_side_calls/modbus.py yield one SpecialAgentCommand per
+Modbus slave (the 1.0.4/1.0.5 approach) did not make Checkmk run
+agent_modbus once per slave - it only ever ran the LAST yielded command,
+silently dropping the others. Checkmk itself can only invoke this program
+once per host, period.
+
+So the per-slave looping has to happen *inside* this single invocation
+instead. server_side_calls/modbus.py now packs every configured slave into
+ONE command line, with each slave's "port slave_id registers..." block
+introduced by the literal marker "--slave", e.g.:
+
+    agent_modbus 10.2.1.176 --slave 502 1 26:1:gauge:Bateria-Core ... --slave 502 2 26:1:gauge:Bateria-Fitoteca ...
+
+This script splits that back into per-slave blocks and calls the real
+compiled binary (agent_modbus_bin) once per block, concatenating whatever
+<<<modbus_value>>> output each one produces. A slave that fails to
+respond (e.g. a temporarily unreachable sensor) just contributes no lines
+for that block instead of aborting everything - its registers are then
+simply absent from the parsed section, and check_modbus already reports
+that correctly as UNKNOWN ("Not found value for <item>"), so the failure
+stays visible without one bad sensor taking down every other sensor
+configured on the same host. This script always exits 0, regardless of
+how many (if any) slave blocks succeeded, since Checkmk treats a nonzero
+exit from this single invocation as a total fetch failure.
+
+Author: Felipe Soares <felipe.staypuff@gmail.com> (https://github.com/felipesoaresti/)
+Version: 1.0 - 20260721
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+REAL_BINARY = Path(__file__).resolve().parent / "agent_modbus_bin"
+SLAVE_MARKER = "--slave"
+PER_SLAVE_TIMEOUT_SECONDS = 30
+
+
+def split_into_slave_blocks(args: list[str]) -> list[list[str]]:
+    """Split "port slave_id reg ... --slave port slave_id reg ..." into blocks."""
+    blocks: list[list[str]] = []
+    current: list[str] | None = None
+    for token in args:
+        if token == SLAVE_MARKER:
+            current = []
+            blocks.append(current)
+        elif current is not None:
+            current.append(token)
+    return blocks
+
+
+def run_one_slave(address: str, block: list[str]) -> str:
+    """Run agent_modbus_bin for one slave block; empty string on any failure."""
+    if len(block) < 2:
+        return ""
+    port, slave_id, *registers = block
+    command = [str(REAL_BINARY), address, port, slave_id, *registers]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=PER_SLAVE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout if result.returncode == 0 else ""
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        return 0
+    address, *rest = argv
+    for block in split_into_slave_blocks(rest):
+        sys.stdout.write(run_one_slave(address, block))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
