@@ -5,3 +5,5 @@ __pycache__/
 # layout"); older/previous .mkp builds are kept locally but not versioned.
 modbus-*.mkp
 !modbus-1.0.7.mkp
+.venv
+.venv/*
