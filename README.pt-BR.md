@@ -69,6 +69,47 @@ automaticamente. O `build.sh` deste repositório é a alternativa para gerar o `
 de um site Checkmk disponível (replica byte a byte o formato usado pelo pacote original: tar PAX +
 gzip, com `info`, `info.json` e `cmk_addons_plugins.tar`).
 
+## Requisitos
+
+**`libmodbus.so.5` precisa estar instalada em todo servidor Checkmk que rodar esse agente
+especial** — o site central e todo site remoto/distribuído, não só no dispositivo Modbus
+monitorado. É uma dependência de runtime do binário de terceiros `agent_modbus_bin` (veja
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)), e o pacote **não** instala isso
+automaticamente. Se estiver faltando, o `agent_modbus_bin` falha ao carregar e o
+`libexec/agent_modbus` engole o erro silenciosamente (por design - ele tolera falha de slave
+individual) e sempre sai com código 0, então o agente especial parece ter "rodado normal" mas
+não retorna dado nenhum — a descoberta então não encontra nenhum serviço, sem erro nenhum
+aparente na UI do Checkmk.
+
+Instale via o gerenciador de pacotes da distribuição:
+
+- **Ubuntu 24.04 (noble)**: `sudo apt-get install libmodbus5` (pacote `3.1.10-1ubuntu1`, no
+  repositório `universe`).
+- **Ubuntu 22.04 (jammy)**: `sudo apt-get install libmodbus5` (pacote `3.1.6-2`, no
+  `universe`; rode `sudo add-apt-repository universe` antes se o apt não achar o pacote).
+- **Oracle Linux 8/9**: precisa do EPEL — `sudo dnf install -y oracle-epel-release-el9` (ou
+  `-el8`), depois `sudo dnf install -y libmodbus`.
+
+Se o servidor não tiver rota funcional até os repositórios (proxy/firewall corporativo
+bloqueando acesso de saída — isso já aconteceu na prática), baixe o `.deb`/`.rpm`
+correspondente numa máquina com acesso à internet e copie manualmente:
+
+```sh
+# numa máquina com acesso à internet:
+curl -LO http://archive.ubuntu.com/ubuntu/pool/universe/libm/libmodbus/libmodbus5_3.1.10-1ubuntu1_amd64.deb
+# copie para o servidor de destino (scp) e, no servidor de destino:
+sudo dpkg -i libmodbus5_3.1.10-1ubuntu1_amd64.deb
+```
+
+De qualquer forma, confirme que a dependência realmente foi resolvida antes de considerar o
+plugin corrigido:
+
+```sh
+sudo -u cmk ldd /omd/sites/<nome_do_site>/local/lib/python3/cmk_addons/plugins/modbus/libexec/agent_modbus_bin
+```
+
+`libmodbus.so.5` precisa mostrar um caminho real, não `=> not found`.
+
 ## Instalação
 
 1. Se uma versão anterior estiver instalada, remova-a primeiro (Setup > Extension packages, ou

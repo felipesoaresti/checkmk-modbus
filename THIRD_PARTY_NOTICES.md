@@ -15,8 +15,12 @@ repository's own `LICENSE` (GPL-2.0-only). This file documents it.
   `agent_modbus - Vincent Tacquet - 2024 - vincent.tacquet@gmail.com`. The maintainer of this
   repository has not pinned an exact upstream commit/tag for the bundled build.
 - **Runtime dependency**: dynamically linked against `libmodbus.so.5` (confirmed via `ldd`), plus
-  the standard `libstdc++`, `libc`, `libm`, `libgcc_s`. `libmodbus` must be installed on the
-  Checkmk server for the binary to run. Built for Linux x86_64.
+  the standard `libstdc++`, `libc`, `libm`, `libgcc_s`. `libmodbus` must be installed on **every**
+  Checkmk server that runs this special agent (central and remote/distributed sites alike) - the
+  package does not bundle or install it. See the README's ["Requirements"](README.md#requirements)
+  section (or [`README.pt-BR.md#requisitos`](README.pt-BR.md#requisitos)) for install commands per
+  distro and how to tell it's missing (the failure is silent - the agent wrapper exits 0 either
+  way). Built for Linux x86_64.
 - **License status**: **not confirmed.** No license file or SPDX identifier is embedded in the
   binary itself, and no license text for `agent_modbus` or its `libmodbus` dependency is
   reproduced in this repository. The upstream project's own licensing terms have not been

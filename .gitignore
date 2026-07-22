@@ -7,3 +7,7 @@ modbus-*.mkp
 !modbus-1.0.11.mkp
 .venv
 .venv/*
+
+# Local copies of third-party .deb/.rpm packages (libmodbus), kept for offline install
+# on servers without repository access. Not part of this project - not versioned.
+libmodbus-debs/

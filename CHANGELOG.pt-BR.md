@@ -15,6 +15,17 @@ manifesto para um resumo curto (o changelog completo agora vive aqui em vez de d
 manifesto). Removido o arquivo `modbus-1.0.8.mkp`, que tinha ficado rastreado no git por engano
 depois de ser substituído.
 
+Follow-up só de documentação (ainda 1.0.11, sem mudança no pacote/manifesto): adicionada uma
+seção "Requisitos" nos dois READMEs deixando explícito que a `libmodbus.so.5` precisa estar
+instalada em todo servidor Checkmk que rodar esse agente especial (site central e sites
+remotos/distribuídos), com comandos de instalação para Ubuntu 24.04/22.04 e Oracle Linux,
+alternativa offline via `.deb`/`.rpm`, e um comando de verificação. Isso foi motivado por um
+caso real de implantação em que o plugin funcionava no site de teste mas não retornava dado
+nenhum, silenciosamente, num site distribuído de produção, por causa exatamente dessa
+dependência faltando — a falha não é óbvia pela UI do Checkmk, já que o wrapper do agente
+sempre sai com código 0 de qualquer forma. O `THIRD_PARTY_NOTICES.md` agora referencia essa
+seção em vez de só mencionar a dependência de passagem.
+
 ## 1.0.10 — refactor interno: usar o helper oficial `check_levels()`
 
 Sem mudança de configuração. Auditei o plugin contra a documentação oficial de desenvolvedor do
