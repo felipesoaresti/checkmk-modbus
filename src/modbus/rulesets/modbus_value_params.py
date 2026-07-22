@@ -22,8 +22,8 @@ device's registers are named, the user writes one scaling rule per
 "kind" of register (temperature, humidity, ...), not one per physical
 sensor.
 
-Besides decimal scaling, this rule also configures two more per-item
-display properties:
+Besides decimal scaling, this rule also configures more per-item
+display and alerting properties:
 
   - "unit": a free-form suffix appended after the scaled value (e.g.
     "%" or " °C" - the leading space, if any, is entirely up to the
@@ -37,15 +37,24 @@ display properties:
     Only 16-bit (one word) registers are supported, since the agent
     section does not carry the configured word count through to the
     check.
+  - "levels_upper" / "levels_lower": optional WARN/CRIT thresholds
+    applied to the scaled value, independently in each direction (a
+    register can use either, both, or neither) - e.g. a battery
+    register only needs "levels_lower" (CRIT when the battery is low),
+    while a temperature register may want both ("levels_upper" for too
+    hot, "levels_lower" for too cold - the latter with negative
+    values, since temperature is signed). Both default to "no
+    levels" (the previous always-OK behavior).
 
 A register with no matching rule falls back to
-check_default_parameters={"decimal_places": 0, "unit": "", "signed": False}
-in modbus_value.py, i.e. the original unscaled, unsigned, unitless
-integer display - so existing installs are unaffected until the user
-opts in.
+check_default_parameters={"decimal_places": 0, "unit": "", "signed":
+False, "levels_upper": ("no_levels", None), "levels_lower":
+("no_levels", None)} in modbus_value.py, i.e. the original unscaled,
+unsigned, unitless, always-OK integer display - so existing installs
+are unaffected until the user opts in.
 
 Author: Felipe Soares <felipe.staypuff@gmail.com> (https://github.com/felipesoaresti/)
-Version: 1.1 - 20260722
+Version: 1.2 - 20260722
 """
 
 from cmk.rulesets.v1 import Help, Title
@@ -54,7 +63,10 @@ from cmk.rulesets.v1.form_specs import (
     DefaultValue,
     Dictionary,
     DictElement,
+    Float,
     Integer,
+    LevelDirection,
+    SimpleLevels,
     String,
 )
 from cmk.rulesets.v1.form_specs.validators import NumberInRange
@@ -113,6 +125,42 @@ def _parameter_form_modbus_value_params():
                     prefill=DefaultValue(False),
                 ),
                 required=False,
+            ),
+            "levels_upper": DictElement(
+                parameter_form=SimpleLevels(
+                    title=Title("Levels (upper)"),
+                    help_text=Help(
+                        "WARN/CRIT thresholds applied when the scaled value "
+                        "rises too high (e.g. temperature). Independent from "
+                        "'Levels (lower)' below - use either, both or "
+                        "neither. \"No levels\" (the default) keeps the "
+                        "service always OK, same as before this field "
+                        "existed."
+                    ),
+                    level_direction=LevelDirection.UPPER,
+                    form_spec_template=Float(),
+                    prefill_fixed_levels=DefaultValue((0.0, 0.0)),
+                ),
+                required=True,
+            ),
+            "levels_lower": DictElement(
+                parameter_form=SimpleLevels(
+                    title=Title("Levels (lower)"),
+                    help_text=Help(
+                        "WARN/CRIT thresholds applied when the scaled value "
+                        "drops too low (e.g. low battery, or a temperature "
+                        "reading that is too cold - negative values are "
+                        "valid here for signed registers). Independent from "
+                        "'Levels (upper)' above - use either, both or "
+                        "neither. \"No levels\" (the default) keeps the "
+                        "service always OK, same as before this field "
+                        "existed."
+                    ),
+                    level_direction=LevelDirection.LOWER,
+                    form_spec_template=Float(),
+                    prefill_fixed_levels=DefaultValue((0.0, 0.0)),
+                ),
+                required=True,
             ),
         },
     )

@@ -34,10 +34,18 @@ invocation that loops over them internally, and modbus_value.py for how
 the per-slave data is told apart afterwards (each register's "name" must
 stay unique across every slave block in the rule).
 
+Changed in version 1.2 (2026-07-22):
+  - CLEANUP: renamed the module-level rule spec variable from
+    `rule_spec_service_counter` (a leftover, unrelated name) to
+    `rule_spec_modbus`. Purely cosmetic - Checkmk discovers rule specs by
+    the `rule_spec_` prefix alone, so this has no functional effect; the
+    `name="modbus"` argument below (the actual ruleset identifier) was
+    already correct.
+
 Original author (through v1.0.2): wellingtonsilva67@gmail.com
 Adapted and maintained since v1.0.3 by Felipe Soares <felipe.staypuff@gmail.com>
 (https://github.com/felipesoaresti/)
-Version: 1.1 - 20260721
+Version: 1.2 - 20260722
 """
 
 from cmk.rulesets.v1 import Title, Help
@@ -188,7 +196,7 @@ def _valuespec_special_agent_modbus():
     )
 
 
-rule_spec_service_counter = SpecialAgent(
+rule_spec_modbus = SpecialAgent(
     name="modbus",
     topic=Topic.APPLICATIONS,
     parameter_form=_valuespec_special_agent_modbus,

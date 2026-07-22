@@ -64,10 +64,33 @@ Features added in version 1.2 (2026-07-22):
     via two's complement before scaling, instead of always being
     treated as unsigned.
 
+Features added in version 1.3 (2026-07-22):
+  - FEATURE: added configurable "levels_upper"/"levels_lower" WARN/CRIT
+    thresholds (see ../rulesets/modbus_value_params.py), applied to the
+    scaled value independently in each direction. Previously the check
+    always returned OK regardless of the value read.
+
+Changed in version 1.4 (2026-07-22):
+  - REFACTOR: the WARN/CRIT comparison is now delegated to the
+    documented cmk.agent_based.v2.check_levels() helper (the standard
+    Checkmk way to evaluate a value against a "levels_upper"/
+    "levels_lower" param), instead of a hand-rolled comparison. Confirmed
+    live against the real API on a Checkmk 2.4.0p18 site. Two small
+    visible differences from the 1.3 hand-rolled version, both coming
+    from check_levels() itself rather than a choice made here:
+      * the "(warn/crit ...)" text now appears *before* the "(<cid>)"
+        suffix instead of after it, e.g. "Current : 32.00 °C (warn/crit
+        at 30.00 °C/35.00 °C) (28)".
+      * check_levels() phrases a breach differently per direction -
+        "(warn/crit at W/C)" for an upper breach, "(warn/crit below
+        W/C)" for a lower one (the 1.3 code always said "at"). The
+        OK-with-no-levels case (the vast majority of services) is
+        unchanged: "Current : 24.19 °C (28)".
+
 Original author (through v1.0.2): wellingtonsilva67@gmail.com
 Adapted and maintained since v1.0.3 by Felipe Soares <felipe.staypuff@gmail.com>
 (https://github.com/felipesoaresti/)
-Version: 1.2 - 20260722
+Version: 1.4 - 20260722
 """
 
 import re
@@ -79,7 +102,13 @@ from cmk.agent_based.v2 import (
     Result,
     Service,
     State,
+    check_levels,
 )
+
+# Shape of the "levels_upper"/"levels_lower" params, as produced by the
+# SimpleLevels form spec: either no levels configured, or a (warn, crit)
+# pair to compare the scaled value against.
+_NO_LEVELS = ("no_levels", None)
 
 # Column order of each data line under <<<modbus_value>>>, as printed by
 # agent_modbus ("%d %d %s %s" -> cid, raw value, ctype, name).
@@ -133,8 +162,9 @@ def check_modbus(item, params, section):
     `params` comes from the "Modbus register value scaling" rule
     (check_ruleset_name="modbus_value_params" below), matched by item.
     When no rule matches, `check_default_parameters` below supplies
-    decimal_places=0, unit="" and signed=False, which reproduces the
-    original (unscaled, unsigned, unitless integer) display.
+    decimal_places=0, unit="", signed=False and no levels in either
+    direction, which reproduces the original (unscaled, unsigned,
+    unitless, always-OK integer) display.
     """
     data = section.get(item)
     if data is None:
@@ -162,13 +192,33 @@ def check_modbus(item, params, section):
         )
         return
 
-    yield Result(
-        state=State.OK,
-        summary=f"Current : {scaled_value:.{decimal_places}f}{unit} ({cid})",
+    # Delegate the WARN/CRIT comparison to the documented Checkmk helper
+    # (designed to consume exactly the ("no_levels", None) / ("fixed",
+    # (warn, crit)) shape that SimpleLevels produces). With label=None it
+    # renders as just "<value><unit>", optionally followed by "(warn/crit
+    # at ...)" for an upper breach or "(warn/crit below ...)" for a lower
+    # one - we then wrap that in this plugin's own "Current : ... (<cid>)"
+    # format. check_levels() only ever attaches levels_upper (if "fixed")
+    # to the Metric it yields - a lower-only threshold is reflected in the
+    # service state/summary correctly, but never shades a band on the
+    # graph; this is a limitation of the helper itself, not a choice made
+    # here.
+    parts = list(
+        check_levels(
+            scaled_value,
+            levels_upper=params.get("levels_upper", _NO_LEVELS),
+            levels_lower=params.get("levels_lower", _NO_LEVELS),
+            metric_name=_metric_name(item),
+            render_func=lambda v: f"{v:.{decimal_places}f}{unit}",
+        )
     )
+    result = next(p for p in parts if isinstance(p, Result))
+    metric = next(p for p in parts if isinstance(p, Metric))
+
+    yield Result(state=result.state, summary=f"Current : {result.summary} ({cid})")
     # Emitted unconditionally (even with decimal_places=0) so every
     # sensor is graphable/available for historical data from day one.
-    yield Metric(_metric_name(item), scaled_value)
+    yield metric
 
 
 check_plugin_modbus = CheckPlugin(
@@ -178,5 +228,11 @@ check_plugin_modbus = CheckPlugin(
     discovery_function=discover_modbus,
     check_function=check_modbus,
     check_ruleset_name="modbus_value_params",
-    check_default_parameters={"decimal_places": 0, "unit": "", "signed": False},
+    check_default_parameters={
+        "decimal_places": 0,
+        "unit": "",
+        "signed": False,
+        "levels_upper": _NO_LEVELS,
+        "levels_lower": _NO_LEVELS,
+    },
 )

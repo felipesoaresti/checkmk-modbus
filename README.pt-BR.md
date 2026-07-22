@@ -1,6 +1,6 @@
 🇺🇸 [Read this in English](README.md)
 
-# Checkmk MKP `modbus` — Modbus TCP genérico (v1.0.8)
+# Checkmk MKP `modbus` — Modbus TCP genérico (v1.0.10)
 
 Plugin Checkmk (2.3.0p26+, testado em 2.4) para monitorar registradores Modbus TCP arbitrários
 via o agente especial `agent_modbus` (binário de terceiros,
@@ -20,6 +20,45 @@ aqui.
 [MIT](LICENSE) — veja o arquivo `LICENSE` para o texto completo.
 
 ## Changelog
+
+### 1.0.10 — refactor interno: usar o helper oficial `check_levels()`
+
+Sem mudança de configuração. Auditei o plugin contra a documentação oficial de desenvolvedor do
+Checkmk (`devel_check_plugins`, `devel_special_agents`, referências da API `cmk.agent_based`/
+`cmk.rulesets`/`cmk.server_side_calls`): as convenções de nomenclatura (prefixos
+`agent_section_`, `check_plugin_`, `rule_spec_`, `special_agent_`) e o layout de diretórios já
+estavam corretos, mas a comparação de WARN/CRIT adicionada na 1.0.9 era feita manualmente em vez
+de usar `cmk.agent_based.v2.check_levels()` — o jeito documentado e padrão de avaliar um valor
+contra um parâmetro `levels_upper`/`levels_lower`. Troquei para usar o helper (comportamento
+confirmado equivalente testando direto contra a API real em um site Checkmk 2.4.0p18). Também
+renomeei uma variável interna em `rulesets/modbus.py`, de `rule_spec_service_counter` (nome
+que sobrou de outro lugar) para `rule_spec_modbus` (cosmético - o prefixo `rule_spec_` já estava
+certo, então isso não tem efeito funcional).
+
+**Pequena diferença visível**: quando um limite é violado, o texto `(warn/crit at ...)` agora
+aparece *antes* do sufixo `(<cid>)` em vez de depois, ex.: `Current : 32.00 °C (warn/crit at
+30.00 °C/35.00 °C) (28)` em vez de `Current : 32.00 °C (28) (warn/crit at 30.00 °C/35.00 °C)`.
+O caso OK sem levels (a grande maioria dos serviços) fica igual.
+
+### 1.0.9 — limites de alerta (WARN/CRIT) por registrador
+
+A regra "Modbus register value scaling" ganhou mais dois campos: **Levels (upper)** e
+**Levels (lower)**, cada um um limite WARN/CRIT independente e opcional sobre o valor escalado
+(o toggle padrão do Checkmk "No levels / Fixed levels"). Antes, o check sempre devolvia `OK`
+independente do valor lido — não havia como alertar sobre bateria baixa, sensor superaquecendo,
+etc. Ambos usam "No levels" por padrão, então regras/instalações existentes continuam se
+comportando exatamente como antes.
+
+Quando um limite é cruzado, o serviço vai para `WARN`/`CRIT` e o resumo ganha um sufixo - `(warn/
+crit at X/Y)` para violação do limite superior, `(warn/crit below X/Y)` para violação do limite
+inferior (esse texto vem do próprio `check_levels()` do Checkmk, não é algo que o plugin
+escolhe). Ex.: `Current : 5% (warn/crit below 20%/10%) (26)` para bateria baixa. Os limites são
+avaliados como comparações de `float` puras, então valores negativos de WARN/CRIT funcionam
+corretamente para o registrador signed de temperatura (ex.: alertar quando ela cai abaixo de um
+valor negativo configurado). O gráfico da métrica só ganha a faixa de limiar sombreada a partir
+de **Levels (upper)** - o `check_levels()` nunca anexa o **Levels (lower)** ao gráfico, mesmo
+quando é ele que está configurado; o *estado* do serviço reage corretamente aos dois lados de
+qualquer forma, só a faixa sombreada no gráfico é exclusiva do limite superior.
 
 ### 1.0.8 — mostrar unidade (%, °C) e corrigir registradores signed de 16 bits
 
@@ -129,7 +168,7 @@ modbus/
 ├── LICENSE                    licença MIT
 ├── build.sh                   script para gerar o .mkp a partir de src/
 ├── info / info.json           manifesto do pacote (metadados + versão)
-├── modbus-1.0.8.mkp            pacote atual, pronto para instalar
+├── modbus-1.0.10.mkp           pacote atual, pronto para instalar
 └── src/modbus/
     ├── agent_based/modbus_value.py       parse + discovery + check
     ├── rulesets/modbus.py                 regra "Check Modbus devices" (vários slaves por regra)
@@ -139,7 +178,7 @@ modbus/
     └── libexec/agent_modbus_bin            binário real do agente especial (sem mudança de conteúdo)
 ```
 
-Versões anteriores do pacote (`modbus-1.0.2.mkp` a `modbus-1.0.7.mkp`) não ficam neste
+Versões anteriores do pacote (`modbus-1.0.2.mkp` a `modbus-1.0.9.mkp`) não ficam neste
 repositório — só a versão atual é versionada aqui. Se quiser, mantenha um histórico local fora do
 Git.
 
@@ -147,7 +186,7 @@ Para reconstruir o `.mkp` depois de editar algo em `src/`:
 
 ```sh
 ./build.sh            # gera modbus-<versão do info.json>.mkp
-./build.sh 1.0.9       # ou força uma versão específica
+./build.sh 1.0.11      # ou força uma versão específica
 ```
 
 Se você tiver acesso a um site Checkmk real, o caminho mais seguro para empacotar é usar as
@@ -160,8 +199,8 @@ gzip, com `info`, `info.json` e `cmk_addons_plugins.tar`).
 
 1. Se uma versão anterior estiver instalada, remova-a primeiro (Setup > Extension packages, ou
    `mkp remove modbus <versão>`) — evita conflito de arquivos entre versões.
-2. **Setup > Extension packages > Upload package** e envie `modbus-1.0.8.mkp`, ou via linha de
-   comando no site: `mkp add modbus-1.0.8.mkp && mkp enable modbus 1.0.8`.
+2. **Setup > Extension packages > Upload package** e envie `modbus-1.0.10.mkp`, ou via linha de
+   comando no site: `mkp add modbus-1.0.10.mkp && mkp enable modbus 1.0.10`.
 3. Ative as mudanças pendentes (ícone de mudanças pendentes no topo).
 4. Configure a regra "Check Modbus devices" no formato atual — ver "Como configurar" abaixo.
 5. Rode **Services > Rediscover services** nos hosts afetados.
@@ -209,6 +248,12 @@ serviço). Campos:
   negativos (ex.: um sensor de temperatura abaixo de zero). Valores brutos de 32768-65535 são
   convertidos via complemento de dois de 16 bits (`valor - 65536`) antes de escalar. Só se aplica
   a registradores de 1 palavra (16 bits).
+- **Levels (upper)** / **Levels (lower)**: limites opcionais de WARN/CRIT aplicados ao valor
+  escalado, cada um alternando independentemente entre "No levels" (padrão, sempre OK —
+  comportamento anterior) e "Fixed levels". Use "Levels (upper)" para alertar quando o valor
+  sobe demais (ex.: temperatura) e "Levels (lower)" para alertar quando desce demais (ex.:
+  bateria baixa, ou temperatura muito fria — valores negativos de WARN/CRIT são válidos aqui,
+  já que a temperatura é signed). Um registrador pode usar um, os dois, ou nenhum.
 
 > Nota: essa regra aparece tanto em **Service monitoring rules** quanto em **Enforced services**
 > — isso é comportamento normal do Checkmk para esse tipo de regra (parâmetro por item), não é
@@ -220,11 +265,15 @@ bateria é % sem sinal, temperatura é °C com sinal e 2 casas decimais implíci
 sinal com 2 casas decimais implícitas). Como o casamento é por regex de item, **uma única regra
 por "tipo" de registrador cobre todos os slaves/locais**:
 
-| Condição do item (regex)                        | Decimal places | Unit  | Signed | Resultado                |
-|---------------------------------------------------|-----------------|-------|--------|---------------------------|
-| item começa com `Bateria-` (qualquer local)       | 0               | `%`   | não    | `100` → `100%`            |
-| item começa com `Temperatura-` (qualquer local)   | 2               | ` °C` | sim    | `2419` → `24.19 °C`; `65036` → `-5.00 °C` |
-| item começa com `Umidade-` (qualquer local)       | 2               | `%`   | não    | `3538` → `35.38%`         |
+| Condição do item (regex)                        | Decimal places | Unit  | Signed | Levels (upper)     | Levels (lower)      | Resultado                |
+|---------------------------------------------------|-----------------|-------|--------|----------------------|------------------------|---------------------------|
+| item começa com `Bateria-` (qualquer local)       | 0               | `%`   | não    | nenhum               | WARN 20 / CRIT 10      | `100` → `100%`; `5` → `5%` CRIT |
+| item começa com `Temperatura-` (qualquer local)   | 2               | ` °C` | sim    | WARN 30 / CRIT 35    | WARN -5 / CRIT -10     | `2419` → `24.19 °C`; `65036` → `-5.00 °C` WARN |
+| item começa com `Umidade-` (qualquer local)       | 2               | `%`   | não    | nenhum               | nenhum                 | `3538` → `35.38%`         |
+
+Os exemplos de bateria/temperatura acima são ilustrativos — não há nada no código amarrando
+esses limites a um registrador específico; digite os valores de WARN/CRIT que fizerem sentido
+para os seus sensores ao configurar a regra.
 
 ## Saída do serviço
 
@@ -245,7 +294,15 @@ Modbus: Bateria-Core           OK   Current : 100% (26)
 Modbus: Temperatura-Core       OK   Current : 23.69 °C (28)
 Modbus: Umidade-Core           OK   Current : 58.42% (29)
 ```
-e cada serviço passa a ter uma métrica graficável (histórico/Perf-O-Meter).
+
+Depois (1.0.10, com levels também configurados — bateria baixa e leitura fria):
+```
+Modbus: Bateria-Core           CRIT   Current : 5% (warn/crit below 20%/10%) (26)
+Modbus: Temperatura-Core       WARN   Current : -6.50 °C (warn/crit below -5.00 °C/-10.00 °C) (28)
+Modbus: Umidade-Core           OK     Current : 58.42% (29)
+```
+e cada serviço passa a ter uma métrica graficável (histórico/Perf-O-Meter), sombreada com os
+limites configurados quando levels estão definidos.
 
 ## Limitações conhecidas / pontos de atenção
 
