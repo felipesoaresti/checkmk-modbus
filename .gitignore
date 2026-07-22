@@ -4,6 +4,6 @@ __pycache__/
 # Only the current package build is tracked in git (see README "Repository
 # layout"); older/previous .mkp builds are kept locally but not versioned.
 modbus-*.mkp
-!modbus-1.0.7.mkp
+!modbus-1.0.8.mkp
 .venv
 .venv/*

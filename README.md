@@ -1,6 +1,6 @@
 🇧🇷 [Leia em português](README.pt-BR.md)
 
-# Checkmk MKP `modbus` — generic Modbus TCP monitoring (v1.0.7)
+# Checkmk MKP `modbus` — generic Modbus TCP monitoring (v1.0.8)
 
 Checkmk plugin (2.3.0p26+, tested on 2.4) for monitoring arbitrary Modbus TCP registers via the
 `agent_modbus` special agent (third-party binary,
@@ -20,6 +20,24 @@ Modbus device, it is not specific to the Sintrex sensors used as an example here
 [MIT](LICENSE) — see the `LICENSE` file for the full text.
 
 ## Changelog
+
+### 1.0.8 — show unit (%, °C) and fix signed 16-bit registers
+
+The "Modbus register value scaling" rule gained two fields, alongside the existing "Decimal
+places":
+
+- **Unit**: a free-form suffix appended after the scaled value (e.g. `%` or ` °C`), shown in the
+  service summary. Needed to display battery/humidity as a percentage and temperature in Celsius,
+  as configured for the Sintrex sensors.
+- **Interpret as signed 16-bit integer**: the temperature register on the Sintrex sensors is a
+  *signed* 16-bit value (it can read below zero), but the check previously always treated raw
+  values as unsigned, so a negative reading (e.g. raw `65036` for `-5.00 °C`) would display as
+  `650.36` instead. Enabling this option applies 16-bit two's complement before scaling. Only
+  applies to one-word (16-bit) registers.
+
+Both fields default to their previous behavior (no unit, unsigned) so existing installs and rules
+are unaffected until explicitly configured. `info.json`'s `author` field was also corrected to
+match the `(https://github.com/felipesoaresti/)` format used everywhere else in the plugin.
 
 ### 1.0.7 — actually fixed this time: only 1 agent execution per host
 
@@ -108,7 +126,7 @@ modbus/
 ├── LICENSE                    MIT license
 ├── build.sh                   script to build the .mkp from src/
 ├── info / info.json           package manifest (metadata + version)
-├── modbus-1.0.7.mkp            current package, ready to install
+├── modbus-1.0.8.mkp            current package, ready to install
 └── src/modbus/
     ├── agent_based/modbus_value.py       parse + discovery + check
     ├── rulesets/modbus.py                 "Check Modbus devices" rule (several slaves per rule)
@@ -118,7 +136,7 @@ modbus/
     └── libexec/agent_modbus_bin            the real special agent binary (content unchanged)
 ```
 
-Previous package builds (`modbus-1.0.2.mkp` through `modbus-1.0.6.mkp`) are not kept in this
+Previous package builds (`modbus-1.0.2.mkp` through `modbus-1.0.7.mkp`) are not kept in this
 repository - only the current version is version-controlled here. Keep a local history outside
 Git if you want one.
 
@@ -126,7 +144,7 @@ To rebuild the `.mkp` after editing anything under `src/`:
 
 ```sh
 ./build.sh            # builds modbus-<version from info.json>.mkp
-./build.sh 1.0.8       # or force a specific version
+./build.sh 1.0.9       # or force a specific version
 ```
 
 If you have access to a real Checkmk site, the safest way to package is to use the site's own
@@ -139,8 +157,8 @@ with `info`, `info.json` and `cmk_addons_plugins.tar`).
 
 1. If a previous version is installed, remove it first (Setup > Extension packages, or
    `mkp remove modbus <version>`) - avoids file conflicts between versions.
-2. **Setup > Extension packages > Upload package** and upload `modbus-1.0.7.mkp`, or via the
-   site's command line: `mkp add modbus-1.0.7.mkp && mkp enable modbus 1.0.7`.
+2. **Setup > Extension packages > Upload package** and upload `modbus-1.0.8.mkp`, or via the
+   site's command line: `mkp add modbus-1.0.8.mkp && mkp enable modbus 1.0.8`.
 3. Activate pending changes (the pending-changes icon at the top).
 4. Configure the "Check Modbus devices" rule in the current format - see "Configuration" below.
 5. Run **Services > Rediscover services** on the affected hosts.
@@ -178,25 +196,31 @@ under "Modbus slaves":
 
 `Setup > Services > Service monitoring rules > Modbus register value scaling` (or search for
 "Modbus" in the rule search). A service parameter rule, matched by **host + item** (service
-name). Single field:
+name). Fields:
 
 - **Decimal places**: how many decimal places to apply to the raw value before displaying/graphing
   it. The raw value is divided by `10^N`.
+- **Unit**: free-form text appended right after the scaled value, e.g. `%` (no leading space) or
+  ` °C` (with a leading space) - leave empty to show just the number (previous behavior).
+- **Interpret as signed 16-bit integer**: enable for registers that can read negative (e.g. a
+  temperature sensor below zero). Raw values of 32768-65535 are converted via 16-bit two's
+  complement (`value - 65536`) before scaling. Only applies to one-word (16-bit) registers.
 
 > Note: this rule shows up both under **Service monitoring rules** and **Enforced services** -
 > that's normal Checkmk behavior for this kind of rule (per-item parameter), not a duplicate or a
 > bug. Use **Service monitoring rules**, which is the menu for adjusting parameters of already
 > discovered services.
 
-Examples for the Sintrex case (temperature/humidity registers with 2 implied decimal places,
-battery unscaled). Since matching is done via item regex, **a single rule covers every
-slave/location**:
+Examples for the Sintrex case (battery/temperature/humidity registers, per the sensor's Modbus
+map: battery is unsigned %, temperature is signed °C with 2 implied decimal places, humidity is
+unsigned % with 2 implied decimal places). Since matching is done via item regex, **a single rule
+per "kind" of register covers every slave/location**:
 
-| Item condition (regex)                       | Decimal places | Result                        |
-|-----------------------------------------------|-----------------|-------------------------------|
-| item starts with `Temperatura-` (any location) | 2               | `2419` → `24.19`               |
-| item starts with `Umidade-` (any location)     | 2               | `3538` → `35.38`                |
-| (no rule / battery item)                       | 0 (default)     | `100` → `100` (unchanged)      |
+| Item condition (regex)                          | Decimal places | Unit  | Signed | Result                  |
+|--------------------------------------------------|-----------------|-------|--------|--------------------------|
+| item starts with `Bateria-` (any location)       | 0               | `%`   | no     | `100` → `100%`           |
+| item starts with `Temperatura-` (any location)   | 2               | ` °C` | yes    | `2419` → `24.19 °C`; `65036` → `-5.00 °C` |
+| item starts with `Umidade-` (any location)       | 2               | `%`   | no     | `3538` → `35.38%`        |
 
 ## Service output
 
@@ -209,6 +233,13 @@ After (1.0.7, with the scaling rule and every slave in the same rule):
 ```
 Modbus: Temperatura-Core       OK   Current : 23.69 (28)
 Modbus: Temperatura-Fitoteca   OK   Current : 22.42 (28)
+```
+
+After (1.0.8, with unit and signed also configured):
+```
+Modbus: Bateria-Core           OK   Current : 100% (26)
+Modbus: Temperatura-Core       OK   Current : 23.69 °C (28)
+Modbus: Umidade-Core           OK   Current : 58.42% (29)
 ```
 and each service now has a graphable metric (history/Perf-O-Meter).
 

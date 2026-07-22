@@ -33,6 +33,15 @@ side, via the "Modbus register value scaling" check parameter rule
 (see ../rulesets/modbus_value_params.py), matched per-item. A register
 with no matching rule keeps the previous (unscaled, integer) behavior.
 
+Signed values and units: for the same reason as decimal scaling,
+neither is carried through agent_modbus - raw_value always arrives as
+a plain non-negative integer, and with no unit attached. Both are
+therefore also configured per-item via the same "Modbus register
+value scaling" rule: "signed" applies 16-bit two's complement to the
+raw value before scaling (e.g. a temperature register that can read
+below zero), and "unit" is a free-form suffix appended after the
+scaled value (e.g. "%" or " °C").
+
 Fixes applied in version 1.1 (2026-07-21):
   - BUGFIX: parse_modbus() used to key the parsed section by `cid`
     alone. When several "Check Modbus devices" rules target the same
@@ -47,10 +56,18 @@ Fixes applied in version 1.1 (2026-07-21):
     emission (previously the check produced no performance data at
     all, so sensor values could not be graphed).
 
+Features added in version 1.2 (2026-07-22):
+  - FEATURE: added a configurable "unit" suffix (e.g. "%", " °C"),
+    shown alongside the scaled value in the service summary.
+  - BUGFIX/FEATURE: added a configurable "signed" flag so 16-bit
+    registers that can read negative (e.g. temperature) are decoded
+    via two's complement before scaling, instead of always being
+    treated as unsigned.
+
 Original author (through v1.0.2): wellingtonsilva67@gmail.com
 Adapted and maintained since v1.0.3 by Felipe Soares <felipe.staypuff@gmail.com>
 (https://github.com/felipesoaresti/)
-Version: 1.1 - 20260721
+Version: 1.2 - 20260722
 """
 
 import re
@@ -116,8 +133,8 @@ def check_modbus(item, params, section):
     `params` comes from the "Modbus register value scaling" rule
     (check_ruleset_name="modbus_value_params" below), matched by item.
     When no rule matches, `check_default_parameters` below supplies
-    decimal_places=0, which reproduces the original (unscaled integer)
-    display.
+    decimal_places=0, unit="" and signed=False, which reproduces the
+    original (unscaled, unsigned, unitless integer) display.
     """
     data = section.get(item)
     if data is None:
@@ -127,9 +144,17 @@ def check_modbus(item, params, section):
     cid = data.get("cid")
     raw_value = data.get("values")
     decimal_places = params.get("decimal_places", 0)
+    unit = params.get("unit", "")
+    signed = params.get("signed", False)
 
     try:
-        scaled_value = int(raw_value) / (10 ** decimal_places)
+        int_value = int(raw_value)
+        # 16-bit two's complement: only meaningful for one-word
+        # registers, which is what "signed" is documented to support
+        # (the agent section does not carry the configured word count).
+        if signed and 32768 <= int_value <= 65535:
+            int_value -= 65536
+        scaled_value = int_value / (10 ** decimal_places)
     except (TypeError, ValueError):
         yield Result(
             state=State.UNKNOWN,
@@ -139,7 +164,7 @@ def check_modbus(item, params, section):
 
     yield Result(
         state=State.OK,
-        summary=f"Current : {scaled_value:.{decimal_places}f} ({cid})",
+        summary=f"Current : {scaled_value:.{decimal_places}f}{unit} ({cid})",
     )
     # Emitted unconditionally (even with decimal_places=0) so every
     # sensor is graphable/available for historical data from day one.
@@ -153,5 +178,5 @@ check_plugin_modbus = CheckPlugin(
     discovery_function=discover_modbus,
     check_function=check_modbus,
     check_ruleset_name="modbus_value_params",
-    check_default_parameters={"decimal_places": 0},
+    check_default_parameters={"decimal_places": 0, "unit": "", "signed": False},
 )

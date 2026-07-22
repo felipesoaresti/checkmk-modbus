@@ -22,17 +22,41 @@ device's registers are named, the user writes one scaling rule per
 "kind" of register (temperature, humidity, ...), not one per physical
 sensor.
 
+Besides decimal scaling, this rule also configures two more per-item
+display properties:
+
+  - "unit": a free-form suffix appended after the scaled value (e.g.
+    "%" or " °C" - the leading space, if any, is entirely up to the
+    user, since conventions differ between units).
+  - "signed": whether the raw register is a signed 16-bit integer
+    (two's complement). agent_modbus only ever hands the check a plain
+    non-negative integer (see modbus_value.py), so a signed register
+    (e.g. a temperature sensor that can read below zero) needs this
+    flag to be displayed/graphed correctly - without it, a raw value
+    like 65036 (-5.00 after scaling) would show as 650.36 instead.
+    Only 16-bit (one word) registers are supported, since the agent
+    section does not carry the configured word count through to the
+    check.
+
 A register with no matching rule falls back to
-check_default_parameters={"decimal_places": 0} in modbus_value.py,
-i.e. the original unscaled integer display - so existing installs are
-unaffected until the user opts in.
+check_default_parameters={"decimal_places": 0, "unit": "", "signed": False}
+in modbus_value.py, i.e. the original unscaled, unsigned, unitless
+integer display - so existing installs are unaffected until the user
+opts in.
 
 Author: Felipe Soares <felipe.staypuff@gmail.com> (https://github.com/felipesoaresti/)
-Version: 1.0 - 20260721
+Version: 1.1 - 20260722
 """
 
 from cmk.rulesets.v1 import Help, Title
-from cmk.rulesets.v1.form_specs import Dictionary, DictElement, Integer, DefaultValue
+from cmk.rulesets.v1.form_specs import (
+    BooleanChoice,
+    DefaultValue,
+    Dictionary,
+    DictElement,
+    Integer,
+    String,
+)
 from cmk.rulesets.v1.form_specs.validators import NumberInRange
 from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, Topic
 
@@ -60,6 +84,35 @@ def _parameter_form_modbus_value_params():
                     ),
                 ),
                 required=True,
+            ),
+            "unit": DictElement(
+                parameter_form=String(
+                    title=Title("Unit"),
+                    help_text=Help(
+                        "Text appended right after the scaled value, e.g. \"%\" "
+                        "(no leading space) for a battery/humidity register, or "
+                        "\" °C\" (with a leading space) for a temperature "
+                        "register. Leave empty to show just the number "
+                        "(previous behavior)."
+                    ),
+                    prefill=DefaultValue(""),
+                ),
+                required=False,
+            ),
+            "signed": DictElement(
+                parameter_form=BooleanChoice(
+                    title=Title("Interpret as signed 16-bit integer"),
+                    help_text=Help(
+                        "Enable for registers that can hold negative values "
+                        "(e.g. a temperature sensor that reads below zero). "
+                        "Raw values of 32768-65535 are converted via 16-bit "
+                        "two's complement (value - 65536) before scaling. Only "
+                        "applies to one-word (16-bit) registers - leave "
+                        "disabled for unsigned registers (previous behavior)."
+                    ),
+                    prefill=DefaultValue(False),
+                ),
+                required=False,
             ),
         },
     )
