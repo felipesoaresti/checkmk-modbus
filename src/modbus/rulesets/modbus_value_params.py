@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """WATO rule: "Modbus register value scaling" (check parameters, matched by item).
 
 Companion rule to "Check Modbus devices" (modbus.py). While that rule

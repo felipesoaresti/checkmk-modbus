@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """WATO rule: "Check Modbus devices" (Setup > Agents > Other integrations).
 
 This is a *Special Agent* rule. It configures the datasource program

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Orchestrator wrapper around the real agent_modbus binary (agent_modbus_bin).
 
 Why this exists (1.0.7): Checkmk only ever keeps ONE data source per

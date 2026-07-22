@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Check plugin for the generic Modbus special agent (agent_modbus).
 
 Parses the `<<<modbus_value>>>` agent section, discovers one Checkmk

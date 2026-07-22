@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Builds the agent_modbus command line from a "Check Modbus devices" rule.
 
 Confirmed by reading Checkmk 2.4.0p18's own source
